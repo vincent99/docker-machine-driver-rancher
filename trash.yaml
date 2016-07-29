@@ -9,3 +9,5 @@ import:
     version: v0.7.0
   - package: golang.org/x/crypto
     version: master
+  - package: github.com/Azure/go-ansiterm/winterm
+    version: fa152c58bc15761d0200cb75fe958b89a9d4888e
