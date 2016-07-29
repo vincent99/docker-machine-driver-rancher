@@ -76,7 +76,7 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			EnvVar: "RANCHER_VCPU",
 			Name:   "rancher-vcpu",
 			Usage:  "Number of virtual CPUs. Default: " + strconv.Itoa(defaultVcpu),
-			Value:  defaultMemoryMb,
+			Value:  defaultVcpu,
 		},
 		/*
 			mcnflag.IntFlag{
@@ -177,6 +177,7 @@ ssh_authorized_keys:
 		ImageUuid: "docker:" + d.OsImage,
 		MemoryMb:  int64(d.MemoryMb),
 		Vcpu:      int64(d.Vcpu),
+		Userdata:  userdata,
 	})
 
 	if err != nil {
@@ -191,13 +192,13 @@ ssh_authorized_keys:
 		if err != nil {
 			return err
 		}
-		d.IPAddress = machine.PrimaryIpAddress
 
-		if d.IPAddress != "" && machine.State == "active" {
+		d.IPAddress = machine.PrimaryIpAddress
+		if d.IPAddress != "" && machine.State == "running" {
 			break
 		}
 
-		log.Debug("VM not yet available")
+		log.Infof("VM not yet available, state=%s ip=%s", machine.State, machine.PrimaryIpAddress)
 		time.Sleep(2 * time.Second)
 	}
 
@@ -258,32 +259,28 @@ func (d *Driver) GetState() (state.State, error) {
 	}
 
 	switch machine.State {
-	case "creating":
-	case "migrating":
-	case "requested":
-	case "restarting":
-	case "restoring":
-	case "starting":
+	case "creating", "migrating", "requested", "restarting", "restoring", "starting":
+		log.Infof("Returning state starting")
 		return state.Starting, nil
 
-	case "error":
-	case "erroring":
-	case "purged":
-	case "purging":
-	case "removed":
-	case "removing":
+	case "error", "erroring", "purged", "purging", "removed", "removing":
+		log.Infof("Returning state error")
 		return state.Error, nil
 
-	case "running":
-	case "updating-running":
+	case "running", "updating-running":
+		log.Infof("Returning state running")
 		return state.Running, nil
 
-	case "stopped":
-	case "updating-stopped":
+	case "stopped", "updating-stopped":
+		log.Infof("Returning state stopped")
 		return state.Stopped, nil
 
 	case "stopping":
+		log.Infof("Returning state stopping")
 		return state.Stopping, nil
+
+	default:
+		return state.None, nil
 	}
 
 	return state.None, nil
