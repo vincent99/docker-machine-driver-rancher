@@ -1,0 +1,11 @@
+import:
+  - package: github.com/rancher/go-rancher
+    version: bdb84801f2cf82be73e210ff586c531b07c83c42
+  - package: github.com/docker/machine
+    version: v0.8.0
+  - package: github.com/docker/docker
+    version: v1.11.1
+  - package: github.com/pkg/errors
+    version: v0.7.0
+  - package: golang.org/x/crypto
+    version: master

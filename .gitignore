@@ -1,0 +1,9 @@
+*.gz
+*.swp
+/.dapper
+/.trash-cache
+/bin
+/dist
+/build
+/docker-machine-driver-rancher
+/release
