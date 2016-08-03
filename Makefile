@@ -15,7 +15,7 @@ all: build
 
 build:
 	mkdir -p build
-	go build -a -ldflags "$(LDFLAGS)" -o build/$(NAME)-$(BUILD) ./bin
+	go build -a -ldflags "$(LDFLAGS)" -o build/$(NAME) ./bin
 
 dist-clean:
 	rm -rf dist

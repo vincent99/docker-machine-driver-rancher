@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/docker/machine/libmachine/drivers"
@@ -157,8 +158,7 @@ func (d *Driver) Create() error {
 		return err
 	}
 
-	userdata := `		
-#cloud-config
+	userdata := `#cloud-config
 
 ssh_authorized_keys:
 	- "` + key + `"`
@@ -166,8 +166,8 @@ ssh_authorized_keys:
 	log.Info("Creating Rancher VM...")
 
 	if userdata != "" {
-		log.Debugf("Using the following Cloud-init User Data:")
-		log.Debugf("%s", userdata)
+		log.Infof("Using the following Cloud-init User Data:")
+		log.Infof("%s", userdata)
 	}
 
 	client := d.getClient()
@@ -220,7 +220,7 @@ func (d *Driver) createSSHKey() (string, error) {
 		return "", err
 	}
 
-	return string(publicKey), nil
+	return strings.TrimRight(string(publicKey), "\r\n\t "), nil
 }
 
 func (d *Driver) GetURL() (string, error) {
@@ -260,30 +260,23 @@ func (d *Driver) GetState() (state.State, error) {
 
 	switch machine.State {
 	case "creating", "migrating", "requested", "restarting", "restoring", "starting":
-		log.Infof("Returning state starting")
 		return state.Starting, nil
 
 	case "error", "erroring", "purged", "purging", "removed", "removing":
-		log.Infof("Returning state error")
 		return state.Error, nil
 
 	case "running", "updating-running":
-		log.Infof("Returning state running")
 		return state.Running, nil
 
 	case "stopped", "updating-stopped":
-		log.Infof("Returning state stopped")
 		return state.Stopped, nil
 
 	case "stopping":
-		log.Infof("Returning state stopping")
 		return state.Stopping, nil
 
 	default:
 		return state.None, nil
 	}
-
-	return state.None, nil
 }
 
 func (d *Driver) Start() error {
@@ -292,7 +285,7 @@ func (d *Driver) Start() error {
 		return err
 	}
 
-	log.Debugf("Starting %s", d.MachineName)
+	log.Infof("Starting %s", d.MachineName)
 	_, err = d.getClient().ActionStart(machine)
 	return err
 }
@@ -303,7 +296,7 @@ func (d *Driver) Stop() error {
 		return err
 	}
 
-	log.Debugf("Stopping %s", d.MachineName)
+	log.Infof("Stopping %s", d.MachineName)
 	_, err = d.getClient().ActionStop(machine, &rancher.InstanceStop{})
 	return err
 }
@@ -314,7 +307,7 @@ func (d *Driver) Remove() error {
 		return err
 	}
 
-	log.Debugf("Removing %s", d.MachineName)
+	log.Infof("Removing %s", d.MachineName)
 	return d.getClient().Delete(machine)
 }
 
@@ -324,7 +317,7 @@ func (d *Driver) Restart() error {
 		return err
 	}
 
-	log.Debugf("Stopping %s", d.MachineName)
+	log.Infof("Stopping %s", d.MachineName)
 	_, err = d.getClient().ActionRestart(machine)
 	return err
 }
