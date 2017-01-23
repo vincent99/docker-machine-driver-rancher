@@ -67,12 +67,12 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 		},
 		mcnflag.StringFlag{
 			EnvVar: "RANCHER_ENVIRONMENT_NAME",
-			Name:   "rancher-project-name",
+			Name:   "rancher-environment-name",
 			Usage:  "Rancher Environment Name (Name or ID are required if API key has access to more than one Environment",
 		},
 		mcnflag.StringFlag{
 			EnvVar: "RANCHER_ENVIRONMENT_ID",
-			Name:   "rancher-project-id",
+			Name:   "rancher-environment-id",
 			Usage:  "Rancher Environment ID (Name or ID are required if API key has access to more than one Environment)",
 		},
 		mcnflag.StringFlag{
@@ -149,8 +149,8 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.OsUser = flags.String("rancher-os-user")
 	d.MemoryMb = flags.Int("rancher-memory-mb")
 	d.Vcpu = flags.Int("rancher-vcpu")
-	d.ProjectName = flags.String("rancher-project-name")
-	d.ProjectId = flags.String("rancher-project-id")
+	d.ProjectName = flags.String("rancher-environment-name")
+	d.ProjectId = flags.String("rancher-environment-id")
 	//d.RootDiskGb = flags.Int("rancher-root-disk-gb")
 	//d.DataDiskGb = flags.Int("rancher-data-disk-gb")
 
