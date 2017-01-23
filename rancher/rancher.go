@@ -22,6 +22,7 @@ type Driver struct {
 	SecretKey string
 
 	OsImage  string
+	OsUser   string
 	MemoryMb int
 	Vcpu     int
 	//	RootDiskGb				int
@@ -29,12 +30,15 @@ type Driver struct {
 
 	client *rancher.RancherClient
 
-	MachineId string
-	IPAddress string
+	ProjectName string
+	ProjectId   string
+	MachineId   string
+	IPAddress   string
 }
 
 const (
 	defaultOsImage  = "rancher/vm-ubuntu"
+	defaultOsUser   = "ubuntu"
 	defaultMemoryMb = 1024
 	defaultVcpu     = 2
 	//	defaultRootDiskGb= 20
@@ -49,7 +53,7 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 		mcnflag.StringFlag{
 			EnvVar: "RANCHER_URL",
 			Name:   "rancher-url",
-			Usage:  "Rancher Environment URL",
+			Usage:  "Rancher API URL",
 		},
 		mcnflag.StringFlag{
 			EnvVar: "RANCHER_ACCESS_KEY",
@@ -62,10 +66,26 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Usage:  "Rancher Secret Key",
 		},
 		mcnflag.StringFlag{
+			EnvVar: "RANCHER_ENVIRONMENT_NAME",
+			Name:   "rancher-project-name",
+			Usage:  "Rancher Environment Name (Name or ID are required if API key has access to more than one Environment",
+		},
+		mcnflag.StringFlag{
+			EnvVar: "RANCHER_ENVIRONMENT_ID",
+			Name:   "rancher-project-id",
+			Usage:  "Rancher Environment ID (Name or ID are required if API key has access to more than one Environment)",
+		},
+		mcnflag.StringFlag{
 			EnvVar: "RANCHER_OS_IMAGE",
 			Name:   "rancher-os-image",
 			Usage:  "Rancher OS Image.  Default: " + defaultOsImage,
 			Value:  defaultOsImage,
+		},
+		mcnflag.StringFlag{
+			EnvVar: "RANCHER_OS_USER",
+			Name:   "rancher-os-user",
+			Usage:  "Rancher OS User.  Default: " + defaultOsUser,
+			Value:  defaultOsUser,
 		},
 		mcnflag.IntFlag{
 			EnvVar: "RANCHER_MEMORY_MB",
@@ -126,8 +146,11 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.AccessKey = flags.String("rancher-access-key")
 	d.SecretKey = flags.String("rancher-secret-key")
 	d.OsImage = flags.String("rancher-os-image")
+	d.OsUser = flags.String("rancher-os-user")
 	d.MemoryMb = flags.Int("rancher-memory-mb")
 	d.Vcpu = flags.Int("rancher-vcpu")
+	d.ProjectName = flags.String("rancher-project-name")
+	d.ProjectId = flags.String("rancher-project-id")
 	//d.RootDiskGb = flags.Int("rancher-root-disk-gb")
 	//d.DataDiskGb = flags.Int("rancher-data-disk-gb")
 
@@ -135,19 +158,78 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 		return fmt.Errorf("Rancher driver requires the --rancher-url option")
 	}
 
-	if d.AccessKey == "" {
-		return fmt.Errorf("Rancher driver requires the --rancher-access-key option")
-	}
-
-	if d.SecretKey == "" {
-		return fmt.Errorf("Rancher driver requires the --rancher-secret-key option")
-	}
-
 	return nil
 }
 
 func (d *Driver) PreCreateCheck() error {
+	project, err := d.selectProject()
+	if err != nil {
+		return err
+	}
+
+	d.client = nil
+	d.Url = project.Links["self"]
+	log.Debugf("Set URL to %s", d.Url)
+
 	return nil
+}
+
+func (d *Driver) selectProject() (*rancher.Project, error) {
+	var err error
+
+	client := d.getClient()
+
+	// Specific project ID
+	if d.ProjectId != "" {
+		return client.Project.ById(d.ProjectId)
+	}
+
+	// Almost-specific project name
+	if d.ProjectName != "" {
+		projects, err := client.Project.List(&rancher.ListOpts{
+			Filters: map[string]interface{}{
+				"name":     d.ProjectName,
+				"state_ne": "removed",
+				"limit":    "2",
+			},
+		})
+
+		if err != nil {
+			return nil, err
+		}
+
+		if len(projects.Data) > 1 {
+			return nil, fmt.Errorf("There is more than one Environment named '%s', use --rancher-environment-id to choose one", d.ProjectName)
+		}
+
+		if len(projects.Data) == 0 {
+			return nil, fmt.Errorf("No Environment named '%s' was found, check URL and API key", d.ProjectName)
+		}
+
+		return &projects.Data[0], nil
+	}
+
+	// Guess
+	projects, err := client.Project.List(&rancher.ListOpts{
+		Filters: map[string]interface{}{
+			"state_ne": "removed",
+			"limit":    "2",
+		},
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	if len(projects.Data) > 1 {
+		return nil, fmt.Errorf("The supplied API Key has access to more than one Environment, use --rancher-environment-id to choose one")
+	}
+
+	if len(projects.Data) == 0 {
+		return nil, fmt.Errorf("No Environments found, check URL and API key")
+	}
+
+	return &projects.Data[0], nil
 }
 
 func (d *Driver) Create() error {
@@ -170,9 +252,7 @@ ssh_authorized_keys:
 		log.Infof("%s", userdata)
 	}
 
-	client := d.getClient()
-
-	machine, err := client.Create(&rancher.VirtualMachine{
+	machine, err := d.getClient().VirtualMachine.Create(&rancher.VirtualMachine{
 		Name:      d.MachineName,
 		ImageUuid: "docker:" + d.OsImage,
 		MemoryMb:  int64(d.MemoryMb),
@@ -247,8 +327,15 @@ func (d *Driver) GetIP() (string, error) {
 	return d.IPAddress, nil
 }
 
+func (d *Driver) GetSSHUsername() string {
+	if d.OsUser == "" {
+		d.OsUser = defaultOsUser
+	}
+	return d.OsUser
+}
+
 func (d *Driver) getMachine() (*rancher.VirtualMachine, error) {
-	return d.getClient().ById(d.MachineId)
+	return d.getClient().VirtualMachine.ById(d.MachineId)
 }
 
 func (d *Driver) GetState() (state.State, error) {
@@ -286,7 +373,7 @@ func (d *Driver) Start() error {
 	}
 
 	log.Infof("Starting %s", d.MachineName)
-	_, err = d.getClient().ActionStart(machine)
+	_, err = d.getClient().VirtualMachine.ActionStart(machine)
 	return err
 }
 
@@ -297,7 +384,7 @@ func (d *Driver) Stop() error {
 	}
 
 	log.Infof("Stopping %s", d.MachineName)
-	_, err = d.getClient().ActionStop(machine, &rancher.InstanceStop{})
+	_, err = d.getClient().VirtualMachine.ActionStop(machine, &rancher.InstanceStop{})
 	return err
 }
 
@@ -308,7 +395,7 @@ func (d *Driver) Remove() error {
 	}
 
 	log.Infof("Removing %s", d.MachineName)
-	return d.getClient().Delete(machine)
+	return d.getClient().VirtualMachine.Delete(machine)
 }
 
 func (d *Driver) Restart() error {
@@ -318,7 +405,7 @@ func (d *Driver) Restart() error {
 	}
 
 	log.Infof("Stopping %s", d.MachineName)
-	_, err = d.getClient().ActionRestart(machine)
+	_, err = d.getClient().VirtualMachine.ActionRestart(machine)
 	return err
 }
 
@@ -326,7 +413,7 @@ func (d *Driver) Kill() error {
 	return d.Stop()
 }
 
-func (d *Driver) getClient() rancher.VirtualMachineOperations {
+func (d *Driver) getClient() *rancher.RancherClient {
 	if d.client == nil {
 		client, err := rancher.NewRancherClient(&rancher.ClientOpts{
 			Url:       d.Url,
@@ -341,7 +428,7 @@ func (d *Driver) getClient() rancher.VirtualMachineOperations {
 		d.client = client
 	}
 
-	return d.client.VirtualMachine
+	return d.client
 }
 
 func (d *Driver) publicSSHKeyPath() string {
